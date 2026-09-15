@@ -1,0 +1,127 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+
+namespace color
+{
+    public partial class MainWindow : Window
+    {
+        private bool _isUpdating = false; // 防止滑块互相触发导致死循环
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            UpdateAll(255, 0, 0); // 初始红色
+        }
+
+        // ================= 核心联动 =================
+        private void UpdateAll(byte r, byte g, byte b)
+        {
+            if (_isUpdating) return;
+            _isUpdating = true;
+
+            // 检查越界裁剪（LAB转RGB时常发生）
+            bool cropped = (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255);
+            Color col = Color.FromRgb(r, g, b);
+
+            // 预览更新
+            ColorPreview.Background = new SolidColorBrush(col);
+            HexInput.Text = $"#{col.R:X2}{col.G:X2}{col.B:X2}";
+
+            // 更新 RGB 滑块
+            R_Slider.Value = r; G_Slider.Value = g; B_Slider.Value = b;
+
+            // 更新 CMYK 滑块
+            var cmyk = RgbToCmyk(r, g, b);
+            C_Slider.Value = cmyk.C; M_Slider.Value = cmyk.M; Y_Slider.Value = cmyk.Y; K_Slider.Value = cmyk.K;
+
+            // 更新 LAB 滑块
+            var lab = RgbToLab(r, g, b);
+            L_Slider.Value = lab.L; A_Slider.Value = lab.A; B2_Slider.Value = lab.B;
+
+            // 作业要求的“非强制警告”
+            WarnText.Text = cropped ? "⚠ Предupреждение: обрезание цвета (выход за границы)" : "";
+            _isUpdating = false;
+        }
+
+        // ================= 事件监听 =================
+        private void OnRgbChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_isUpdating) UpdateAll((byte)R_Slider.Value, (byte)G_Slider.Value, (byte)B_Slider.Value);
+        }
+        private void OnCmykChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_isUpdating)
+            {
+                var rgb = CmykToRgb(C_Slider.Value, M_Slider.Value, Y_Slider.Value, K_Slider.Value);
+                UpdateAll(rgb.R, rgb.G, rgb.B);
+            }
+        }
+        private void OnLabChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+        {
+            if (!_isUpdating)
+            {
+                var rgb = LabToRgb(L_Slider.Value, A_Slider.Value, B2_Slider.Value);
+                UpdateAll(rgb.R, rgb.G, rgb.B);
+            }
+        }
+
+        // ================= 转换算法 (作业核心) =================
+        private (double C, double M, double Y, double K) RgbToCmyk(byte r, byte g, byte b)
+        {
+            double R = r / 255.0, G = g / 255.0, B = b / 255.0;
+            double K = 1 - Math.Max(R, Math.Max(G, B));
+            if (K == 1) return (0, 0, 0, 100);
+            double C = (1 - R - K) / (1 - K);
+            double M = (1 - G - K) / (1 - K);
+            double Y = (1 - B - K) / (1 - K);
+            return (C * 100, M * 100, Y * 100, K * 100);
+        }
+
+        private (byte R, byte G, byte B) CmykToRgb(double c, double m, double y, double k)
+        {
+            c /= 100; m /= 100; y /= 100; k /= 100;
+            byte R = (byte)Math.Round(255 * (1 - c) * (1 - k));
+            byte G = (byte)Math.Round(255 * (1 - m) * (1 - k));
+            byte B = (byte)Math.Round(255 * (1 - y) * (1 - k));
+            return (R, G, B);
+        }
+
+        private (double L, double A, double B) RgbToLab(byte r, byte g, byte b)
+        {
+            // 简化版 RGB -> XYZ -> LAB (D65)
+            double R = r / 255.0, G = g / 255.0, B = b / 255.0;
+            R = R <= 0.04045 ? R / 12.92 : Math.Pow((R + 0.055) / 1.055, 2.4);
+            G = G <= 0.04045 ? G / 12.92 : Math.Pow((G + 0.055) / 1.055, 2.4);
+            B = B <= 0.04045 ? B / 12.92 : Math.Pow((B + 0.055) / 1.055, 2.4);
+            double X = R * 0.4124 + G * 0.3576 + B * 0.1805;
+            double Y = R * 0.2126 + G * 0.7152 + B * 0.0722;
+            double Z = R * 0.0193 + G * 0.1192 + B * 0.9505;
+            X /= 0.95047; Y /= 1.00000; Z /= 1.08883;
+            double F(double t) => t > 0.008856 ? Math.Pow(t, 1.0 / 3) : (7.787 * t + 16.0 / 116);
+            double fx = F(X), fy = F(Y), fz = F(Z);
+            return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz));
+        }
+
+        private (byte R, byte G, byte B) LabToRgb(double l, double a, double b)
+        {
+            double fy = (l + 16) / 116; double fx = fy + a / 500; double fz = fy - b / 200;
+            double FInv(double t) => Math.Pow(t, 3) > 0.008856 ? Math.Pow(t, 3) : (t - 16.0 / 116) / 7.787;
+            double X = FInv(fx) * 0.95047, Y = FInv(fy) * 1.00000, Z = FInv(fz) * 1.08883;
+            double R = X * 3.2406 + Y * -1.5372 + Z * -0.4986;
+            double G = X * -0.9689 + Y * 1.8758 + Z * 0.0415;
+            double B = X * 0.0557 + Y * -0.2040 + Z * 1.0570;
+            R = R <= 0.0031308 ? 12.92 * R : 1.055 * Math.Pow(R, 1.0 / 2.4) - 0.055;
+            G = G <= 0.0031308 ? 12.92 * G : 1.055 * Math.Pow(G, 1.0 / 2.4) - 0.055;
+            B = B <= 0.0031308 ? 12.92 * B : 1.055 * Math.Pow(B, 1.0 / 2.4) - 0.055;
+
+            byte rOut = (byte)Math.Max(0, Math.Min(255, (int)Math.Round(R * 255)));
+            byte gOut = (byte)Math.Max(0, Math.Min(255, (int)Math.Round(G * 255)));
+            byte bOut = (byte)Math.Max(0, Math.Min(255, (int)Math.Round(B * 255)));
+
+            return (rOut, gOut, bOut);
+        }
+    }
+    
+}
