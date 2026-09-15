@@ -1,0 +1,43 @@
+<Window x:Class="color.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="颜色模型转换 (RGB/CMYK/LAB)" Height="650" Width="450">
+    <ScrollViewer Margin="10">
+        <StackPanel>
+            <!-- 颜色预览与拾色器 -->
+            <Border x:Name="ColorPreview" Height="80" Background="White" BorderBrush="Gray" BorderThickness="1"/>
+            <TextBox x:Name="HexInput" Text="#FF0000" HorizontalAlignment="Center" Margin="5"/>
+
+            <!-- RGB 滑块 -->
+            <GroupBox Header="RGB" Margin="5">
+                <StackPanel>
+                    <Slider x:Name="R_Slider" Minimum="0" Maximum="255" ValueChanged="OnRgbChanged"/>
+                    <Slider x:Name="G_Slider" Minimum="0" Maximum="255" ValueChanged="OnRgbChanged"/>
+                    <Slider x:Name="B_Slider" Minimum="0" Maximum="255" ValueChanged="OnRgbChanged"/>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- CMYK 滑块 -->
+            <GroupBox Header="CMYK" Margin="5">
+                <StackPanel>
+                    <Slider x:Name="C_Slider" Minimum="0" Maximum="100" ValueChanged="OnCmykChanged"/>
+                    <Slider x:Name="M_Slider" Minimum="0" Maximum="100" ValueChanged="OnCmykChanged"/>
+                    <Slider x:Name="Y_Slider" Minimum="0" Maximum="100" ValueChanged="OnCmykChanged"/>
+                    <Slider x:Name="K_Slider" Minimum="0" Maximum="100" ValueChanged="OnCmykChanged"/>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- LAB 滑块 -->
+            <GroupBox Header="LAB" Margin="5">
+                <StackPanel>
+                    <Slider x:Name="L_Slider" Minimum="0" Maximum="100" ValueChanged="OnLabChanged"/>
+                    <Slider x:Name="A_Slider" Minimum="-128" Maximum="127" ValueChanged="OnLabChanged"/>
+                    <Slider x:Name="B2_Slider" Minimum="-128" Maximum="127" ValueChanged="OnLabChanged"/>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- 越界警告 -->
+            <TextBlock x:Name="WarnText" Foreground="Red" HorizontalAlignment="Center" Margin="10"/>
+        </StackPanel>
+    </ScrollViewer>
+</Window>
