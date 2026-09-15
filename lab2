@@ -1,0 +1,58 @@
+import os, glob, csv
+import tkinter as tk
+from tkinter import filedialog, ttk
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+MODE_BITS = {'1':1,'L':8,'P':8,'RGB':24,'RGBA':32,'CMYK':32,'YCbCr':24,'LAB':24,'HSV':24}
+
+def analyze(path):
+    try:
+        im = Image.open(path)
+        w, h = im.size
+        dpi = im.info.get('dpi') or ('-','-')
+        dpi_s = f"{round(dpi[0])}x{round(dpi[1])}" if isinstance(dpi, tuple) else str(dpi)
+        bits = MODE_BITS.get(im.mode, '?')
+        comp = im.info.get('compression', '-')
+        fmt = im.format or os.path.splitext(path)[1].upper().lstrip('.')
+        if fmt == 'TIFF': comp = str(im.tag.get(259, '-'))
+        return [os.path.basename(path), f"{w}x{h}", dpi_s, f"{bits}bit({im.mode})", fmt, str(comp)]
+    except Exception as e:
+        return [os.path.basename(path), "ERR", "-", "-", "-", str(e)]
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Lab2 图像信息读取器")
+        self.geometry("900x500")
+        frm = tk.Frame(self); frm.pack(fill='x', padx=8, pady=8)
+        tk.Button(frm, text="选择文件夹", command=self.pick).pack(side='left')
+        self.lbl = tk.Label(frm, text="未选择文件夹"); self.lbl.pack(side='left', padx=10)
+        cols = ("文件名", "尺寸(px)", "DPI", "色深(mode)", "格式", "压缩")
+        self.tv = ttk.Treeview(self, columns=cols, show='headings')
+        for c in cols: 
+            self.tv.heading(c, text=c); self.tv.column(c, width=140)
+        self.tv.pack(fill='both', expand=True)
+        tk.Button(self, text="导出CSV", command=self.export).pack(pady=4)
+        self.rows = []
+
+    def pick(self):
+        d = filedialog.askdirectory()
+        if not d: return
+        self.lbl.config(text=d)
+        self.rows = []
+        files = []
+        for ext in ('*.jpg','*.jpeg','*.gif','*.tif','*.tiff','*.bmp','*.png','*.pcx'):
+            files += glob.glob(os.path.join(d,'**',ext), recursive=True)
+            files += glob.glob(os.path.join(d,'**',ext.upper()), recursive=True)
+        for f in files:
+            self.rows.append(analyze(f))
+        self.tv.delete(*self.tv.get_children())
+        for r in self.rows: self.tv.insert('', tk.END, values=r)
+
+    def export(self):
+        with open("result.csv", "w", newline='', encoding='utf-8-sig') as fp:
+            csv.writer(fp).writerows(self.rows)
+        self.lbl.config(text="已导出 result.csv")
+
+App().mainloop()
