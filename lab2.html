@@ -1,0 +1,125 @@
+<div class="card">
+  <h2>图像信息读取 (Чтение информации из графических файлов)</h2>
+
+  <div>
+    选择文件夹（可批量读取 jpg / gif / tif / bmp / png / pcx）：
+  </div>
+
+  <!-- ✅ 关键修改：允许选择文件夹 -->
+  <input type="file" id="folderInput" webkitdirectory multiple>
+
+  <table>
+    <thead>
+      <tr>
+        <th>文件名</th>
+        <th>尺寸 (px)</th>
+        <th>分辨率 (DPI)</th>
+        <th>位深</th>
+        <th>compress/Type</th>
+        <th>备注</th>
+      </tr>
+    </thead>
+    <tbody id="tblBody"></tbody>
+  </table>
+</div>
+
+<script>
+document.getElementById('folderInput').addEventListener('change', async e => {
+  const files = Array.from(e.target.files).filter(f =>
+    /\.(jpg|jpeg|gif|tif|tiff|bmp|png|pcx)$/i.test(f.name)
+  );
+
+  const tbody = document.getElementById('tblBody');
+  tbody.innerHTML = '';
+
+  for (const file of files) {
+    const info = await readHead(file);
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${info.name}</td>
+      <td>${info.width || '-'}×${info.height || '-'}</td>
+      <td>${info.dpi || '-'}</td>
+      <td>${info.bitDepth || '-'}</td>
+      <td>${info.compression || '-'}</td>
+      <td>${info.note || ''}</td>
+    `;
+    tbody.appendChild(tr);
+  }
+});
+
+function readHead(file) {
+  return new Promise(resolve => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const arr = new Uint8Array(reader.result);
+      let width, height, dpi, bitDepth, compression = '未知', note = '';
+
+      if (arr[0] === 0x89 && arr[1] === 0x50 && arr[2] === 0x4E && arr[3] === 0x47) {
+        width = (arr[16] << 24) | (arr[17] << 16) | (arr[18] << 8) | arr[19];
+        height = (arr[20] << 24) | (arr[21] << 16) | (arr[22] << 8) | arr[23];
+        bitDepth = arr[24];
+        compression = 'PNG (DEFLATE)';
+
+      } else if (arr[0] === 0xFF && arr[1] === 0xD8) {
+        compression = 'JPEG';
+        note = '量化矩阵/哈夫曼';
+        let i = 2;
+        while (i < arr.length - 8) {
+          if (arr[i] === 0xFF && arr[i + 1] === 0xC0) {
+            width = (arr[i + 7] << 8) | arr[i + 8];
+            height = (arr[i + 5] << 8) | arr[i + 6];
+            bitDepth = arr[i + 4] * 8;
+            break;
+          }
+          i++;
+        }
+
+      } else if (arr[0] === 0x42 && arr[1] === 0x4D) {
+        width = (arr[18] << 24) | (arr[19] << 16) | (arr[20] << 8) | arr[21];
+        height = (arr[22] << 24) | (arr[23] << 16) | (arr[24] << 8) | arr[25];
+        bitDepth = (arr[28] << 8) | arr[29];
+        compression = 'BMP';
+        dpi = `${((arr[38] << 24 | arr[39] << 16 | arr[40] << 8 | arr[41]) / 39.37) | 0}`;
+
+      } else if (arr[0] === 0x47 && arr[1] === 0x49 && arr[2] === 0x46) {
+        width = arr[6] | (arr[7] << 8);
+        height = arr[8] | (arr[9] << 8);
+        bitDepth = (arr[10] & 0x07) + 1;
+        compression = 'GIF (LZW)';
+
+      } else if (arr[0] === 0x0A) {
+        width = ((arr[8] | (arr[9] << 8)) - (arr[4] | (arr[5] << 8))) + 1;
+        height = ((arr[10] | (arr[11] << 8)) - (arr[6] | (arr[7] << 8))) + 1;
+        bitDepth = arr[3] * arr[65];
+        compression = 'PCX (RLE)';
+
+      } else {
+        const img = new Image();
+        img.onload = () => resolve({
+          name: file.name,
+          width: img.width,
+          height: img.height,
+          dpi: '-',
+          bitDepth: '-',
+          compression: '浏览器解码',
+          note: '非标准头'
+        });
+        img.src = URL.createObjectURL(file);
+        return;
+      }
+
+      resolve({
+        name: file.name,
+        width,
+        height,
+        dpi,
+        bitDepth,
+        compression,
+        note
+      });
+    };
+
+    reader.readAsArrayBuffer(file.slice(0, 1024));
+  });
+}
+</script>
