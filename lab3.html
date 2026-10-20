@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>Лабораторная работа 3: Вариант 4</title>
+<style>
+  body { font-family: sans-serif; background: #f0f0f0; margin: 20px; color: #333; }
+  h1 { font-size: 24px; } .task { margin-bottom: 20px; font-weight: bold; }
+  .container { display: flex; gap: 20px; }
+  .panel { background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+  .controls button { display: block; width: 100%; margin-bottom: 10px; padding: 10px; cursor: pointer; }
+  .canvas-box { margin-top: 10px; text-align: center; }
+  canvas { background: #ddd; border: 1px solid #ccc; display: block; margin-bottom: 5px; }
+  .info { margin-top: 10px; font-size: 14px; color: #d00; }
+</style>
+</head>
+<body>
+<h1>Лабораторная работа 3: Обработка изображений (Вариант 4)</h1>
+<div class="task">任务：1. 直方图与线性对比度 | 4. 图像分割 (边缘/亮度跳变检测)</div>
+
+<div class="container">
+  <div class="panel controls">
+    <h3>控制面板</h3>
+    <button onclick="generateTest()">生成测试图(低对比+边缘)</button>
+    <button onclick="applyLinear()">线性对比度拉伸</button>
+    <button onclick="applyEqualize()">直方图均衡化</button>
+    <button onclick="applySobel()">边缘检测 (Sobel分割)</button>
+    <button onclick="applyOtsu()">全局阈值分割 (Otsu)</button>
+    <div class="info" id="info"></div>
+  </div>
+  
+  <div class="panel">
+    <h3>原图与直方图</h3>
+    <canvas id="srcImg" width="256" height="256"></canvas>
+    <canvas id="srcHist" width="256" height="100"></canvas>
+  </div>
+  
+  <div class="panel">
+    <h3>处理结果</h3>
+    <canvas id="dstImg" width="256" height="256"></canvas>
+    <canvas id="dstHist" width="256" height="100"></canvas>
+  </div>
+</div>
+
+<script>
+const SIZE = 256;
+const ctxSrc = document.getElementById('srcImg').getContext('2d');
+const ctxDst = document.getElementById('dstImg').getContext('2d');
+const ctxSrcH = document.getElementById('srcHist').getContext('2d');
+const ctxDstH = document.getElementById('dstHist').getContext('2d');
+const info = document.getElementById('info');
+let currentImgData = null;
+
+// 像素操作辅助
+function getGray(data, x, y) { return data[(y*SIZE+x)*4]; }
+function setGray(data, x, y, v) {
+  data[(y*SIZE+x)*4] = data[(y*SIZE+x)*4+1] = data[(y*SIZE+x)*4+2] = v;
+  data[(y*SIZE+x)*4+3] = 255;
+}
+function cloneImgData(img) { return new ImageData(new Uint8ClampedArray(img.data), SIZE, SIZE); }
+
+// 直方图计算与绘制（修复：完整实现）
+function calcHist(img) {
+  let h = new Array(256).fill(0);
+  for(let i=0; i<img.data.length; i+=4) h[img.data[i]]++;
+  return h;
+}
+function drawHist(ctx, hist) {
+  ctx.clearRect(0,0,256,100);
+  let max = Math.max(...hist);
+  ctx.fillStyle = '#555';
+  for(let i=0; i<256; i++) {
+    let h = hist[i]/max * 100;
+    ctx.fillRect(i, 100-h, 1, h);
+  }
+}
+
+// 生成测试图：低对比度 + 中心方块（亮度跳变）
+function generateTest() {
+  let img = new ImageData(SIZE, SIZE);
+  for(let y=0; y<SIZE; y++) for(let x=0; x<SIZE; x++) {
+    let v = 90 + Math.sin(x/20)*15 + Math.cos(y/20)*15; // 低对比 60~120
+    if(x>100 && x<156 && y>100 && y<156) v += 40; // 中心亮度跳变
+    setGray(img.data, x, y, Math.max(0, Math.min(255, v)));
+  }
+  currentImgData = img;
+  ctxSrc.putImageData(img, 0, 0);
+  drawHist(ctxSrcH, calcHist(img));
+  ctxDst.clearRect(0,0,SIZE,SIZE);
+  ctxDstH.clearRect(0,0,256,100);
+  info.innerText = "已生成低对比度+边缘测试图";
+}
+
+// 1. 线性对比度拉伸
+function applyLinear() {
+  if(!currentImgData) return;
+  let src = currentImgData, dst = cloneImgData(src);
+  let min=255, max=0;
+  for(let i=0; i<src.data.length; i+=4) { let v=src.data[i]; if(v<min)min=v; if(v>max)max=v; }
+  for(let y=0; y<SIZE; y++) for(let x=0; x<SIZE; x++) {
+    let g = getGray(src.data,x,y);
+    let ng = (g-min)/(max-min)*255;
+    setGray(dst.data, x, y, ng);
+  }
+  ctxDst.putImageData(dst,0,0);
+  drawHist(ctxDstH, calcHist(dst));
+  info.innerText = `线性拉伸: [${min},${max}] -> [0,255]`;
+}
+
+// 1. 直方图均衡化
+function applyEqualize() {
+  if(!currentImgData) return;
+  let src = currentImgData, dst = cloneImgData(src);
+  let hist = calcHist(src), cdf = new Array(256).fill(0);
+  let sum=0, total=SIZE*SIZE;
+  for(let i=0; i<256; i++) { sum+=hist[i]; cdf[i]=Math.round(sum/total*255); }
+  for(let y=0; y<SIZE; y++) for(let x=0; x<SIZE; x++) {
+    setGray(dst.data, x, y, cdf[getGray(src.data,x,y)]);
+  }
+  ctxDst.putImageData(dst,0,0);
+  drawHist(ctxDstH, calcHist(dst));
+  info.innerText = "直方图均衡化完成";
+}
+
+// 4. Sobel边缘检测（修复：增加阈值二值化，突出边缘）
+function applySobel() {
+  if(!currentImgData) return;
+  let src = currentImgData, dst = cloneImgData(src);
+  let magArr = new Array(SIZE*SIZE).fill(0);
+  let maxMag=0;
+  for(let y=1; y<SIZE-1; y++) for(let x=1; x<SIZE-1; x++) {
+    let gx = -getGray(src.data,x-1,y-1)-2*getGray(src.data,x-1,y)-getGray(src.data,x-1,y+1)
+             +getGray(src.data,x+1,y-1)+2*getGray(src.data,x+1,y)+getGray(src.data,x+1,y+1);
+    let gy = -getGray(src.data,x-1,y-1)-2*getGray(src.data,x,y-1)-getGray(src.data,x+1,y-1)
+             +getGray(src.data,x-1,y+1)+2*getGray(src.data,x,y+1)+getGray(src.data,x+1,y+1);
+    let mag = Math.sqrt(gx*gx+gy*gy);
+    magArr[y*SIZE+x]=mag; if(mag>maxMag)maxMag=mag;
+  }
+  // 自动阈值（均值）二值化，契合“分割”任务
+  let th = maxMag*0.3;
+  for(let y=0; y<SIZE; y++) for(let x=0; x<SIZE; x++) {
+    setGray(dst.data, x, y, magArr[y*SIZE+x]>th ? 255 : 0);
+  }
+  ctxDst.putImageData(dst,0,0);
+  drawHist(ctxDstH, calcHist(dst));
+  info.innerText = "Sobel边缘检测+阈值分割完成";
+}
+
+// 4. Otsu全局阈值
+function applyOtsu() {
+  if(!currentImgData) return;
+  let src = currentImgData, dst = cloneImgData(src);
+  let hist = calcHist(src), total=SIZE*SIZE, sum=0, sumB=0;
+  for(let i=0; i<256; i++) sum+=i*hist[i];
+  let wB=0, wF=0, varMax=0, threshold=0;
+  for(let t=0; t<256; t++) {
+    wB+=hist[t]; if(wB==0) continue;
+    wF=total-wB; if(wF==0) break;
+    sumB+=t*hist[t];
+    let mB=sumB/wB, mF=(sum-sumB)/wF;
+    let varB=wB*wF*(mB-mF)*(mB-mF);
+    if(varB>varMax){ varMax=varB; threshold=t; }
+  }
+  for(let y=0; y<SIZE; y++) for(let x=0; x<SIZE; x++) {
+    setGray(dst.data, x, y, getGray(src.data,x,y)>threshold?255:0);
+  }
+  ctxDst.putImageData(dst,0,0);
+  drawHist(ctxDstH, calcHist(dst));
+  info.innerText = `Otsu阈值=${threshold}`;
+}
+
+// 初始化
+generateTest();
+</script>
+</body>
+</html>
